@@ -5,3 +5,5 @@ int GetAlertThreshold();
 void SetAlertThreshold(int threshold);
 bool GetStartupEnabled();
 void SetStartupEnabled(bool enabled);
+int GetCheckFrequency();
+void SetCheckFrequency(int seconds);

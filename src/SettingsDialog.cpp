@@ -1,6 +1,7 @@
 #include "SettingsDialog.h"
 #include "resource.h"
 #include "Settings.h"
+#include "Globals.h"
 #include <wchar.h> // For _wtoi
 
 INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -18,6 +19,11 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         {
             CheckDlgButton(hDlg, IDC_STARTUP_CHECK, BST_CHECKED);
         }
+
+        // Load current frequency and set it to the edit box
+        int frequency = GetCheckFrequency();
+        SetDlgItemInt(hDlg, IDC_FREQUENCY_EDIT, frequency, FALSE);
+
         return (INT_PTR)TRUE;
     }
     case WM_COMMAND:
@@ -40,21 +46,26 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             bool startupEnabled = (IsDlgButtonChecked(hDlg, IDC_STARTUP_CHECK) == BST_CHECKED);
             SetStartupEnabled(startupEnabled);
 
-            EndDialog(hDlg, LOWORD(wParam));
+            // Get and save frequency
+            GetDlgItemTextW(hDlg, IDC_FREQUENCY_EDIT, buffer, 16);
+            int newFrequency = _wtoi(buffer);
+            if (newFrequency >= 1) // At least 1 second
+            {
+                SetCheckFrequency(newFrequency);
+            }
+
+            DestroyWindow(hDlg);
             return (INT_PTR)TRUE;
         }
         case IDCANCEL:
-            EndDialog(hDlg, LOWORD(wParam));
+            DestroyWindow(hDlg);
             return (INT_PTR)TRUE;
         }
         break;
+    case WM_DESTROY:
+        // This is important for modeless dialogs to signal they are closed.
+        g_hSettingsDialog = NULL;
+        break;
     }
     return (INT_PTR)FALSE;
-}
-
-
-void ShowSettingsDialog(HWND hParent)
-{
-    extern HINSTANCE g_hInst; // Use the global instance handle from main.cpp
-    DialogBox(g_hInst, MAKEINTRESOURCE(IDD_SETTINGS), hParent, SettingsDlgProc);
 }

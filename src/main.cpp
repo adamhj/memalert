@@ -7,8 +7,8 @@
 #include <shellapi.h>
 #include "resource.h"
 #include "Settings.h"
-#include "SettingsDialog.h"
 #include "ToastNotifier.h"
+#include "Globals.h"
 
 #define WM_TRAYICON (WM_USER + 1)
 #define IDT_TIMER1 1
@@ -16,6 +16,7 @@
 // Global variables
 HINSTANCE g_hInst = NULL;
 HWND g_hWnd = NULL;
+HWND g_hSettingsDialog = NULL;
 ToastNotifier g_notifier;
 const wchar_t CLASS_NAME[] = L"MemAlertWindowClass";
 const wchar_t WINDOW_TITLE[] = L"MemAlert";
@@ -25,17 +26,25 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void AddTrayIcon(HWND hWnd);
 void RemoveTrayIcon(HWND hWnd);
 void ShowContextMenu(HWND hWnd, POINT pt);
+INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+void OpenOrFocusSettingsDialog();
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
-    // --- SDK Version Check ---
-    wchar_t sdk_msg[256];
-    swprintf_s(sdk_msg, L"DEBUG: Windows SDK Build Version: %d\n", VER_PRODUCTBUILD);
-    OutputDebugStringW(sdk_msg);
-    // -------------------------
+    // Single instance check
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MemAlertMutex");
+    if (hMutex != NULL && GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        HWND hWndExisting = FindWindowW(CLASS_NAME, NULL);
+        if (hWndExisting)
+        {
+            PostMessage(hWndExisting, WM_APP_SHOWSETTINGS, 0, 0);
+        }
+        CloseHandle(hMutex);
+        return 0;
+    }
 
     g_hInst = hInstance;
-
     InitSettings();
 
     // Register the window class.
@@ -51,21 +60,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 0;
     }
 
-    // Create the window.
-    g_hWnd = CreateWindowEx(
-        0,                              // Optional window styles.
-        CLASS_NAME,                     // Window class
-        WINDOW_TITLE,                   // Window text
-        WS_OVERLAPPEDWINDOW,            // Window style
-
-        // Size and position
+    // Create the main hidden window.
+    g_hWnd = CreateWindowEx(0, CLASS_NAME, WINDOW_TITLE, WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-
-        NULL,       // Parent window    
-        NULL,       // Menu
-        hInstance,  // Instance handle
-        NULL        // Additional application data
-    );
+        NULL, NULL, hInstance, NULL);
 
     if (g_hWnd == NULL)
     {
@@ -73,27 +71,57 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 0;
     }
 
-    // We don't want to show the main window.
-    // ShowWindow(g_hWnd, nCmdShow);
-
     AddTrayIcon(g_hWnd);
-    SetTimer(g_hWnd, IDT_TIMER1, 5000, NULL); // Trigger every 5 seconds
+    SetTimer(g_hWnd, IDT_TIMER1, GetCheckFrequency() * 1000, NULL);
 
-    // Run the message loop.
+    // If launched from toast, show settings
+    if (wcsstr(pCmdLine, L"action=openSettings"))
+    {
+        OpenOrFocusSettingsDialog();
+    }
+
+    // Main message loop
     MSG msg = { };
     while (GetMessage(&msg, NULL, 0, 0) > 0)
     {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        // This allows keyboard navigation (Tab, Enter, etc.) in the modeless dialog.
+        if (g_hSettingsDialog == NULL || !IsDialogMessage(g_hSettingsDialog, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
 
+    CloseHandle(hMutex);
     return 0;
+}
+
+void OpenOrFocusSettingsDialog()
+{
+    if (g_hSettingsDialog)
+    {
+        // If dialog is already open, just bring it to the front.
+        SetForegroundWindow(g_hSettingsDialog);
+    }
+    else
+    {
+        // Create the modeless dialog.
+        g_hSettingsDialog = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_SETTINGS), g_hWnd, SettingsDlgProc);
+        if (g_hSettingsDialog)
+        {
+            ShowWindow(g_hSettingsDialog, SW_SHOW);
+        }
+    }
 }
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
+    case WM_APP_SHOWSETTINGS:
+        OpenOrFocusSettingsDialog();
+        return 0;
+
     case WM_DESTROY:
         KillTimer(hWnd, IDT_TIMER1);
         RemoveTrayIcon(hWnd);
@@ -113,11 +141,6 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             if (totalVirtual > 0) {
                 int percentage = (int)((usedVirtual * 100) / totalVirtual);
                 int threshold = GetAlertThreshold();
-
-                wchar_t buffer[256];
-                swprintf_s(buffer, L"Commit Charge: %d%%, Threshold: %d%%\n", percentage, threshold);
-                OutputDebugStringW(buffer);
-
                 if (percentage >= threshold)
                 {
                     g_notifier.ShowToast(percentage);
@@ -127,11 +150,18 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_TRAYICON:
-        if (lParam == WM_RBUTTONUP)
+        switch (lParam)
+        {
+        case WM_RBUTTONUP:
         {
             POINT curPoint;
             GetCursorPos(&curPoint);
             ShowContextMenu(hWnd, curPoint);
+            break;
+        }
+        case WM_LBUTTONDBLCLK:
+            OpenOrFocusSettingsDialog();
+            break;
         }
         return 0;
 
@@ -139,7 +169,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         switch (LOWORD(wParam))
         {
         case IDM_SETTINGS:
-            ShowSettingsDialog(hWnd);
+            OpenOrFocusSettingsDialog();
             break;
         case IDM_EXIT:
             DestroyWindow(hWnd);
@@ -170,7 +200,6 @@ void AddTrayIcon(HWND hWnd)
     nid.uCallbackMessage = WM_TRAYICON;
     nid.hIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_APPICON));
     wcscpy_s(nid.szTip, L"MemAlert");
-
     Shell_NotifyIcon(NIM_ADD, &nid);
 }
 
@@ -180,7 +209,6 @@ void RemoveTrayIcon(HWND hWnd)
     nid.cbSize = sizeof(NOTIFYICONDATA);
     nid.hWnd = hWnd;
     nid.uID = 1;
-
     Shell_NotifyIcon(NIM_DELETE, &nid);
 }
 
@@ -192,7 +220,6 @@ void ShowContextMenu(HWND hWnd, POINT pt)
         HMENU hSubMenu = GetSubMenu(hMenu, 0);
         if (hSubMenu)
         {
-            // To make the menu disappear when clicking outside
             SetForegroundWindow(hWnd);
             TrackPopupMenu(hSubMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, NULL);
         }

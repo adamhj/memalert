@@ -51,3 +51,16 @@ void SetStartupEnabled(bool enabled)
     WritePrivateProfileStringW(L"Settings", L"Startup", enabled ? L"1" : L"0", g_iniPath);
     UpdateStartupShortcut(enabled);
 }
+
+int GetCheckFrequency()
+{
+    // Default to 5 seconds
+    return GetPrivateProfileIntW(L"Settings", L"Frequency", 5, g_iniPath);
+}
+
+void SetCheckFrequency(int seconds)
+{
+    wchar_t buffer[16];
+    swprintf_s(buffer, L"%d", seconds);
+    WritePrivateProfileStringW(L"Settings", L"Frequency", buffer, g_iniPath);
+}

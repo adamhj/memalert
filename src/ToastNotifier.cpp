@@ -145,6 +145,21 @@ void ::ToastNotifier::ShowToast(int currentUsage)
     hr = toastStatics->GetTemplateContent(ABI::Windows::UI::Notifications::ToastTemplateType_ToastText02, &xml);
     if (FAILED(hr)) return;
 
+    // Add launch attribute to the toast element
+    Microsoft::WRL::ComPtr<ABI::Windows::Data::Xml::Dom::IXmlNode> docNode;
+    if (SUCCEEDED(xml.As(&docNode)))
+    {
+        Microsoft::WRL::ComPtr<ABI::Windows::Data::Xml::Dom::IXmlNode> rootNode;
+        if (SUCCEEDED(docNode->get_FirstChild(&rootNode)))
+        {
+            Microsoft::WRL::ComPtr<ABI::Windows::Data::Xml::Dom::IXmlElement> rootElement;
+            if (SUCCEEDED(rootNode.As(&rootElement)))
+            {
+                rootElement->SetAttribute(Microsoft::WRL::Wrappers::HStringReference(L"launch").Get(), Microsoft::WRL::Wrappers::HStringReference(L"action=openSettings").Get());
+            }
+        }
+    }
+
     Microsoft::WRL::ComPtr<ABI::Windows::Data::Xml::Dom::IXmlNodeList> textNodes;
     hr = xml->GetElementsByTagName(Microsoft::WRL::Wrappers::HStringReference(L"text").Get(), &textNodes);
     if (FAILED(hr)) return;
