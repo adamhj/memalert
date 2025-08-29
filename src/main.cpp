@@ -10,8 +10,14 @@
 #include "ToastNotifier.h"
 #include "Globals.h"
 
-#define WM_TRAYICON (WM_USER + 1)
-#define IDT_TIMER1 1
+// Forward declarations
+LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+void AddTrayIcon(HWND hWnd);
+void RemoveTrayIcon(HWND hWnd);
+void ShowContextMenu(HWND hWnd, POINT pt);
+INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+void OpenOrFocusSettingsDialog();
+void PerformMemoryCheck();
 
 // Global variables
 HINSTANCE g_hInst = NULL;
@@ -20,14 +26,6 @@ HWND g_hSettingsDialog = NULL;
 ToastNotifier g_notifier;
 const wchar_t CLASS_NAME[] = L"MemAlertWindowClass";
 const wchar_t WINDOW_TITLE[] = L"MemAlert";
-
-// Forward declarations
-LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-void AddTrayIcon(HWND hWnd);
-void RemoveTrayIcon(HWND hWnd);
-void ShowContextMenu(HWND hWnd, POINT pt);
-INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-void OpenOrFocusSettingsDialog();
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
@@ -38,6 +36,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         HWND hWndExisting = FindWindowW(CLASS_NAME, NULL);
         if (hWndExisting)
         {
+            // Use a defined constant for clarity
             PostMessage(hWndExisting, WM_APP_SHOWSETTINGS, 0, 0);
         }
         CloseHandle(hMutex);
@@ -73,6 +72,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     AddTrayIcon(g_hWnd);
     SetTimer(g_hWnd, IDT_TIMER1, GetCheckFrequency() * 1000, NULL);
+
+    // Perform an initial check immediately on startup
+    PerformMemoryCheck();
 
     // If launched from toast, show settings
     if (wcsstr(pCmdLine, L"action=openSettings"))
@@ -122,6 +124,14 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         OpenOrFocusSettingsDialog();
         return 0;
 
+    case WM_SETTINGS_CHANGED:
+        // Kill the old timer and create a new one with the updated frequency
+        KillTimer(hWnd, IDT_TIMER1);
+        SetTimer(hWnd, IDT_TIMER1, GetCheckFrequency() * 1000, NULL);
+        // Perform a check immediately after settings change
+        PerformMemoryCheck();
+        return 0;
+
     case WM_DESTROY:
         KillTimer(hWnd, IDT_TIMER1);
         RemoveTrayIcon(hWnd);
@@ -131,21 +141,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_TIMER:
         if (wParam == IDT_TIMER1)
         {
-            MEMORYSTATUSEX statex;
-            statex.dwLength = sizeof(statex);
-            GlobalMemoryStatusEx(&statex);
-
-            DWORDLONG totalVirtual = statex.ullTotalPageFile;
-            DWORDLONG usedVirtual = statex.ullTotalPageFile - statex.ullAvailPageFile;
-            
-            if (totalVirtual > 0) {
-                int percentage = (int)((usedVirtual * 100) / totalVirtual);
-                int threshold = GetAlertThreshold();
-                if (percentage >= threshold)
-                {
-                    g_notifier.ShowToast(percentage);
-                }
-            }
+            PerformMemoryCheck();
         }
         return 0;
 
@@ -224,5 +220,24 @@ void ShowContextMenu(HWND hWnd, POINT pt)
             TrackPopupMenu(hSubMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, NULL);
         }
         DestroyMenu(hMenu);
+    }
+}
+
+void PerformMemoryCheck()
+{
+    MEMORYSTATUSEX statex;
+    statex.dwLength = sizeof(statex);
+    GlobalMemoryStatusEx(&statex);
+
+    DWORDLONG totalVirtual = statex.ullTotalPageFile;
+    DWORDLONG usedVirtual = statex.ullTotalPageFile - statex.ullAvailPageFile;
+    
+    if (totalVirtual > 0) {
+        int percentage = (int)((usedVirtual * 100) / totalVirtual);
+        int threshold = GetAlertThreshold();
+        if (percentage >= threshold)
+        {
+            g_notifier.ShowToast(percentage);
+        }
     }
 }

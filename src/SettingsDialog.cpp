@@ -54,6 +54,9 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 SetCheckFrequency(newFrequency);
             }
 
+            // Notify the main window that settings have changed
+            PostMessage(g_hWnd, WM_SETTINGS_CHANGED, 0, 0);
+
             DestroyWindow(hDlg);
             return (INT_PTR)TRUE;
         }
