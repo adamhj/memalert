@@ -161,6 +161,9 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case IDM_SETTINGS:
             OpenOrFocusSettingsDialog();
             break;
+        case IDM_ABOUT:
+            MessageBox(hWnd, L"MemAlert Version 1.0", L"About MemAlert", MB_OK | MB_ICONINFORMATION);
+            break;
         case IDM_EXIT:
             DestroyWindow(hWnd);
             break;

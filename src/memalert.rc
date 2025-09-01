@@ -10,6 +10,8 @@ BEGIN
     POPUP "ContextMenu"
     BEGIN
         MENUITEM "Settings", IDM_SETTINGS
+        MENUITEM "About", IDM_ABOUT
+        MENUITEM SEPARATOR
         MENUITEM "Exit", IDM_EXIT
     END
 END
