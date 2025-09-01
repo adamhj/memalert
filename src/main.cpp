@@ -76,12 +76,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     // Perform an initial check immediately on startup
     PerformMemoryCheck();
 
-    // If launched from toast, show settings
-    if (wcsstr(pCmdLine, L"action=openSettings"))
-    {
-        OpenOrFocusSettingsDialog();
-    }
-
     // Main message loop
     MSG msg = { };
     while (GetMessage(&msg, NULL, 0, 0) > 0)
